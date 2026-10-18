@@ -137,3 +137,10 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
 }
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Lexify API',
+    'DESCRIPTION': 'Yapay zeka destekli dil öğrenme uygulaması backend servisleri.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+}
