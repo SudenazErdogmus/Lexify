@@ -1,4 +1,6 @@
-from rest_framework import viewsets
+from rest_framework import viewsets 
+from rest_framework import generics, permissions
+
 from .models import User, MediaSource, ContextualWord, NotionSyncLog, FlashcardSession
 from .serializers import (
     UserSerializer, 
@@ -27,3 +29,8 @@ class NotionSyncLogViewSet(viewsets.ModelViewSet):
 class FlashcardSessionViewSet(viewsets.ModelViewSet):
     queryset = FlashcardSession.objects.all()
     serializer_class = FlashcardSessionSerializer
+
+class RegisterView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [permissions.AllowAny]
