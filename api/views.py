@@ -1,3 +1,7 @@
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from .utils import icerik_cek
+from .ai_service import metni_analiz_et
 from rest_framework import viewsets, generics, permissions
 from .models import User, MediaSource, ContextualWord, NotionSyncLog, FlashcardSession
 from .serializers import (
@@ -22,7 +26,7 @@ class UserViewSet(viewsets.ModelViewSet):
         return User.objects.filter(id=self.request.user.id)
 
 class MediaSourceViewSet(viewsets.ModelViewSet):
-    queryset = MediaSource.objects.all() # Router için gerekli
+    queryset = MediaSource.objects.all()
     serializer_class = MediaSourceSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -31,6 +35,31 @@ class MediaSourceViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    # BURADAN İTİBAREN YENİ EKLENEN KOD
+    @action(detail=False, methods=['post'])
+    def process_url(self, request):
+        url = request.data.get('url')
+        if not url:
+            return Response({"hata": "Lütfen bir 'url' gönderin."}, status=400)
+
+        # 1. Metni Çek
+        cekim_sonucu = icerik_cek(url)
+        if not cekim_sonucu['basarili']:
+            return Response({"hata": cekim_sonucu['hata']}, status=400)
+
+        # 2. Yapay Zeka ile Analiz Et (Şimdilik herkes için B1 seviyesi varsayıyoruz)
+        analiz_sonucu = metni_analiz_et(cekim_sonucu['metin'], kullanici_seviyesi="B1")
+        
+        if not analiz_sonucu['basarili']:
+            return Response({"hata": analiz_sonucu['hata']}, status=500)
+
+        # 3. Sonucu Dön
+        return Response({
+            "mesaj": "Metin başarıyla analiz edildi.",
+            "orijinal_metin_uzunlugu": len(cekim_sonucu['metin']),
+            "bulunan_kelimeler": analiz_sonucu['veri']
+        }, status=200)
 
 class ContextualWordViewSet(viewsets.ModelViewSet):
     queryset = ContextualWord.objects.all() # Router için gerekli
