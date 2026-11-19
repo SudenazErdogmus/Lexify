@@ -1,71 +1,95 @@
-import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage'; 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { View, ActivityIndicator } from 'react-native';
 
 import WelcomeScreen from '../screens/WelcomeScreen';
 import LoginScreen from '../screens/LoginScreen';
+import LevelSelectionScreen from '../screens/LevelSelectionScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ResultScreen from '../screens/ResultScreen';
-import LevelSelectionScreen from '../screens/LevelSelectionScreen'; // YENİ SAYFAMIZ İÇERİ AKTARILDI
+import DictionaryScreen from '../screens/DictionaryScreen';
+import FlashcardsScreen from '../screens/FlashcardsScreen';
+import ProfileScreen from '../screens/ProfileScreen';
+import TextsScreen from '../screens/TextsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Henüz oluşturmadığımız sayfalar için geçici (dummy) bileşenler
-const DictionaryScreen = () => null;
-const FlashcardsScreen = () => null;
-const ProfileScreen = () => null;
-// LevelSelectionScreen boş tanımı buradan silindi!
+function MainTabs({ navigation }: any) {
+  const handleLogout = async () => {
+    await AsyncStorage.clear();
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Welcome' }],
+    });
+  };
 
-function MainTabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarStyle: { backgroundColor: '#130B29', borderTopWidth: 1, borderTopColor: 'rgba(254, 240, 138, 0.1)', paddingBottom: 8, paddingTop: 8, height: 65 },
-        tabBarActiveTintColor: '#FEF08A', 
-        tabBarInactiveTintColor: '#64748B',
+        tabBarStyle: {
+          backgroundColor: '#130B29',
+          borderTopWidth: 1,
+          borderTopColor: 'rgba(254, 240, 138, 0.12)',
+          paddingBottom: 8,
+          paddingTop: 6,
+          height: 64,
+        },
+        tabBarActiveTintColor: '#FEF08A',
+        tabBarInactiveTintColor: '#94A3B8',
         tabBarIcon: ({ focused, color, size }) => {
           let iconName;
           if (route.name === 'Home') iconName = focused ? 'home' : 'home-outline';
           else if (route.name === 'Dictionary') iconName = focused ? 'book' : 'book-outline';
           else if (route.name === 'Flashcards') iconName = focused ? 'layers' : 'layers-outline';
-          else if (route.name === 'Profile') iconName = focused ? 'person' : 'person-outline'; 
+          else if (route.name === 'Profile') iconName = focused ? 'person' : 'person-outline';
+          else if (route.name === 'Texts') iconName = focused ? 'document-text' : 'document-text-outline';
           return <Ionicons name={iconName as any} size={size} color={color} />;
         },
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarLabel: 'Ana Sayfa' }} />
+      <Tab.Screen name="Home" options={{ tabBarLabel: 'Ana Sayfa' }}>
+        {(props) => <HomeScreen {...props} onLogout={handleLogout} />}
+      </Tab.Screen>
       <Tab.Screen name="Dictionary" component={DictionaryScreen} options={{ tabBarLabel: 'Sözlüğüm' }} />
+      <Tab.Screen name="Texts" component={TextsScreen} options={{ tabBarLabel: 'Metinlerim' }} />
       <Tab.Screen name="Flashcards" component={FlashcardsScreen} options={{ tabBarLabel: 'Kartlar' }} />
-      <Tab.Screen name="Profile" component={ProfileScreen} options={{ tabBarLabel: 'Profil' }} />
+      <Tab.Screen name="Profile" options={{ tabBarLabel: 'Profil' }}>
+        {(props) => <ProfileScreen {...props} onLogout={handleLogout} />}
+      </Tab.Screen>
     </Tab.Navigator>
   );
 }
 
 export default function AppNavigator() {
-  const [initialRoute, setInitialRoute] = useState('Welcome');
   const [isLoading, setIsLoading] = useState(true);
+  const [initialRoute, setInitialRoute] = useState('Welcome');
 
   useEffect(() => {
-    const checkAuthStatus = async () => {
+    const checkAuthAndLevel = async () => {
       try {
-        const userToken = await AsyncStorage.getItem('userToken');
-        if (userToken) {
-          setInitialRoute('MainApp'); 
+        const token = await AsyncStorage.getItem('userToken');
+        const level = await AsyncStorage.getItem('userLevel');
+
+        if (token && level) {
+          setInitialRoute('MainApp');
+        } else if (token) {
+          setInitialRoute('LevelSelection');
+        } else {
+          setInitialRoute('Welcome');
         }
-      } catch (error) {
-        console.error('Oturum kontrolü sırasında hata:', error);
+      } catch (e) {
+        console.error('Oturum veya seviye okunamadı', e);
       } finally {
         setIsLoading(false);
       }
     };
-
-    checkAuthStatus();
+    checkAuthAndLevel();
   }, []);
 
   if (isLoading) {

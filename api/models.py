@@ -69,6 +69,7 @@ class ContextualWord(models.Model):
     notion_page_id = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    cefr_level = models.CharField(max_length=10, default='B2', blank=True)
 
     def __str__(self):
         return self.word
@@ -115,3 +116,22 @@ class FlashcardSession(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.contextual_word.word} - {self.created_at}"
+
+class CEFRWord(models.Model):
+    LEVEL_CHOICES = [
+        ('A1', 'A1'),
+        ('A2', 'A2'),
+        ('B1', 'B1'),
+        ('B2', 'B2'),
+        ('C1', 'C1'),
+        ('C2', 'C2'),
+    ]
+
+    word = models.CharField(max_length=100, unique=True, db_index=True)
+    cefr_level = models.CharField(max_length=5, choices=LEVEL_CHOICES, db_index=True)
+    turkish_translation = models.CharField(max_length=255, blank=True, default='')
+    english_definition = models.TextField(blank=True, default='')
+    example_sentence = models.TextField(blank=True, default='')
+
+    def __str__(self):
+        return f"{self.word} ({self.cefr_level})"

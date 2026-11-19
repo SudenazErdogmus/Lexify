@@ -1,29 +1,34 @@
+from .analyzer import analyze_text_hybrid
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework import viewsets, generics, permissions
 from .utils import icerik_cek
 from .ai_service import metni_analiz_et
-from rest_framework import viewsets, generics, permissions
+from .notion_service import add_word_to_notion
 from .models import User, MediaSource, ContextualWord, NotionSyncLog, FlashcardSession
 from .serializers import (
-    UserSerializer, 
-    MediaSourceSerializer, 
-    ContextualWordSerializer, 
-    NotionSyncLogSerializer, 
-    FlashcardSessionSerializer
+    UserSerializer,
+    MediaSourceSerializer,
+    ContextualWordSerializer,
+    NotionSyncLogSerializer,
+    FlashcardSessionSerializer,
 )
+
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.AllowAny]
 
+
 class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all() # Router için gerekli
+    queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         return User.objects.filter(id=self.request.user.id)
+
 
 class MediaSourceViewSet(viewsets.ModelViewSet):
     queryset = MediaSource.objects.all()
@@ -36,44 +41,57 @@ class MediaSourceViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
-    # BURADAN İTİBAREN YENİ EKLENEN KOD
     @action(detail=False, methods=['post'])
     def process_url(self, request):
         url = request.data.get('url')
-        if not url:
-            return Response({"hata": "Lütfen bir 'url' gönderin."}, status=400)
+        text = request.data.get('text')
+        level = request.data.get('level', 'B1')
 
-        # 1. Metni Çek
-        cekim_sonucu = icerik_cek(url)
-        if not cekim_sonucu['basarili']:
-            return Response({"hata": cekim_sonucu['hata']}, status=400)
+        if url:
+            cekim_sonucu = icerik_cek(url)
+            if not cekim_sonucu['basarili']:
+                return Response({"hata": cekim_sonucu['hata']}, status=400)
+            ham_metin = cekim_sonucu['metin']
+        elif text:
+            ham_metin = text
+        else:
+            return Response({"hata": "Lütfen bir 'url' veya 'text' gönderin."}, status=400)
 
-        # 2. Yapay Zeka ile Analiz Et (Şimdilik herkes için B1 seviyesi varsayıyoruz)
-        analiz_sonucu = metni_analiz_et(cekim_sonucu['metin'], kullanici_seviyesi="B1")
-        
-        if not analiz_sonucu['basarili']:
-            return Response({"hata": analiz_sonucu['hata']}, status=500)
+        def ai_yedek(metin, seviye):
+            sonuc = metni_analiz_et(metin, kullanici_seviyesi=seviye)
+            if sonuc.get('basarili'):
+                return sonuc.get('veri', [])
+            return []
 
-        # 3. Sonucu Dön
+        bulunan_kelimeler = analyze_text_hybrid(
+            ham_metin,
+            user_level=level,
+            ai_fallback_fn=ai_yedek,
+        )
+
         return Response({
             "mesaj": "Metin başarıyla analiz edildi.",
-            "orijinal_metin_uzunlugu": len(cekim_sonucu['metin']),
-            "bulunan_kelimeler": analiz_sonucu['veri']
+            "orijinal_metin_uzunlugu": len(ham_metin),
+            "ham_metin": ham_metin,
+            "bulunan_kelimeler": bulunan_kelimeler
         }, status=200)
 
+
 class ContextualWordViewSet(viewsets.ModelViewSet):
-    queryset = ContextualWord.objects.all() # Router için gerekli
+    queryset = ContextualWord.objects.all()
     serializer_class = ContextualWordSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return self.request.user.contextual_words.all()
+        return self.request.user.contextual_words.all().order_by('-created_at')
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        word_obj = serializer.save(user=self.request.user)
+        add_word_to_notion(self.request.user, word_obj)
+
 
 class NotionSyncLogViewSet(viewsets.ModelViewSet):
-    queryset = NotionSyncLog.objects.all() # Router için gerekli
+    queryset = NotionSyncLog.objects.all()
     serializer_class = NotionSyncLogSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -83,8 +101,9 @@ class NotionSyncLogViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+
 class FlashcardSessionViewSet(viewsets.ModelViewSet):
-    queryset = FlashcardSession.objects.all() # Router için gerekli
+    queryset = FlashcardSession.objects.all()
     serializer_class = FlashcardSessionSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -93,3 +112,4 @@ class FlashcardSessionViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+

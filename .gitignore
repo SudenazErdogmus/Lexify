@@ -218,3 +218,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# CEFR dataset CSV files
+words.csv
+word_pos.csv

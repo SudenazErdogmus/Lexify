@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'; // Hafıza
 const { width } = Dimensions.get('window');
 const bgSource = require('../../assets/login-bg.jpeg'); 
 
-export default function HomeScreen({ route, navigation }: any) {
+export default function HomeScreen({ route, navigation, onLogout }: any) {
   const [activeTab, setActiveTab] = useState<'link' | 'text' | 'image'>('link');
   const [inputValue, setInputValue] = useState('');
   const [image, setImage] = useState<string | null>(null);
@@ -85,7 +85,7 @@ const handleAnalyze = () => {
                   <Ionicons name="notifications-outline" size={26} color="#C4B5FD" />
                 </TouchableOpacity>
                 {/* Çıkış Yap Butonu */}
-                <TouchableOpacity style={styles.iconButton} onPress={handleLogout}>
+                <TouchableOpacity style={styles.iconButton} onPress={onLogout}>
                   <Ionicons name="log-out-outline" size={26} color="#F43F5E" />
                 </TouchableOpacity>
               </View>
