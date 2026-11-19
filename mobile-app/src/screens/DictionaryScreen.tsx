@@ -18,7 +18,7 @@ import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 
-const API_URL = 'http://192.168.1.107:8000';
+const API_URL = 'http://10.242.73.1:8000';
 const bgSource = require('../../assets/login-bg.jpeg');
 const LEVELS = ['Tümü', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
@@ -75,10 +75,27 @@ export default function DictionaryScreen({ navigation }: any) {
       });
       if (response.ok) {
         setWords((prev) => prev.filter((item) => item.id !== id));
+      } else {
+        Alert.alert('Hata', 'Kelime silinemedi.');
       }
     } catch (error) {
       Alert.alert('Hata', 'Kelime silinemedi.');
     }
+  };
+
+  const confirmDeleteWord = (item: SavedWord) => {
+    Alert.alert(
+      'Kelimeyi Sil',
+      `"${item.word}" kelimesi sözlüğünden ve Notion'dan kalıcı olarak silinecek. Emin misin?`,
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: () => deleteWord(item.id),
+        },
+      ]
+    );
   };
 
   // Seviyeye göre filtrele, A-Z sırala ve baş harfe göre grupla
@@ -196,7 +213,7 @@ export default function DictionaryScreen({ navigation }: any) {
                             <Text style={styles.levelBadgeText}>{item.cefr_level || 'B2'}</Text>
                           </View>
                         </View>
-                        <TouchableOpacity onPress={() => deleteWord(item.id)} style={styles.deleteButton}>
+                        <TouchableOpacity onPress={() => confirmDeleteWord(item)} style={styles.deleteButton}>
                           <Ionicons name="trash-outline" size={18} color="#F43F5E" />
                         </TouchableOpacity>
                       </View>

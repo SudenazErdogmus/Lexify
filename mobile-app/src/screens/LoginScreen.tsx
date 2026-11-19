@@ -7,7 +7,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
-const API_URL = "http://192.168.1.107:8000"; 
+const API_URL = "http://10.242.73.1:8000"; 
 
 const logoSource = require('../../assets/lexify-logo.png');
 const bgSource = require('../../assets/login-bg.jpeg'); 

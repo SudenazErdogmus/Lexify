@@ -18,7 +18,7 @@ import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 
-const API_URL = 'http://192.168.1.107:8000';
+const API_URL = 'http://10.242.73.1:8000';
 const bgSource = require('../../assets/login-bg.jpeg');
 const LEVELS = ['A2', 'B1', 'B2', 'C1', 'C2'];
 

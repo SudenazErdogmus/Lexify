@@ -4,6 +4,7 @@ from nltk.stem import WordNetLemmatizer
 from nltk.wsd import lesk
 from deep_translator import GoogleTranslator
 from api.models import CEFRWord
+from api.ai_service import ollama_kelime_analiz_et, _ollama_json_cagir
 
 lemmatizer = WordNetLemmatizer()
 
@@ -28,28 +29,35 @@ def get_lemma_candidates(word: str) -> list[str]:
     return list(dict.fromkeys(candidates))
 
 
-def fetch_contextual_details(lemma: str, context_sentence: str) -> tuple[str, str, str]:
-    """
-    1) NLTK Lesk ile cümledeki bağlama en uygun tanım ve örnek cümleyi bulur.
-    2) Eksikse Free Dictionary API'den Cambridge/Oxford tarzı tanım ve örnek çeker.
-    3) deep-translator ile ücretsiz Türkçe çeviri alır.
-    """
+def fetch_contextual_details(lemma: str, context_sentence: str, use_ollama: bool = True) -> tuple[str, str, str]:
+    tr_trans = ""
     en_def = ""
     example = ""
-    tr_trans = ""
 
-    # 1. NLTK Lesk (Bağlamsal Anlam Belirleme)
-    try:
-        tokens = re.findall(r"[A-Za-z]+", context_sentence.lower())
-        synset = lesk(tokens, lemma)
-        if synset:
-            en_def = synset.definition()
-            if synset.examples():
-                example = synset.examples()[0]
-    except Exception:
-        pass
+    # 1. Yerel Ollama (Bağlamsal Türkçe + Tanım + Örnek)
+    if use_ollama:
+        ollama_res = ollama_kelime_analiz_et(lemma, context_sentence)
+        if ollama_res:
+            tr_trans = ollama_res.get("turkce_ceviri", "")
+            en_def = ollama_res.get("ingilizce_tanim", "")
+            example = ollama_res.get("ornek_cumle", "")
+            if tr_trans and en_def and example:
+                return tr_trans, en_def, example
 
-    # 2. Free Dictionary API (Daha temiz tanım/örnek cümle için)
+    # 2. Yedek: NLTK Lesk
+    if not en_def or not example:
+        try:
+            tokens = re.findall(r"[A-Za-z]+", context_sentence.lower())
+            synset = lesk(tokens, lemma)
+            if synset:
+                if not en_def:
+                    en_def = synset.definition()
+                if not example and synset.examples():
+                    example = synset.examples()[0]
+        except Exception:
+            pass
+
+    # 3. Yedek: Free Dictionary API
     if not en_def or not example:
         try:
             resp = requests.get(
@@ -71,39 +79,37 @@ def fetch_contextual_details(lemma: str, context_sentence: str) -> tuple[str, st
         except Exception:
             pass
 
-    # 3. Ücretsiz Türkçe Çeviri
-    try:
-        tr_trans = GoogleTranslator(source="en", target="tr").translate(lemma) or ""
-    except Exception:
-        tr_trans = ""
+    # 4. Yedek: GoogleTranslator
+    if not tr_trans:
+        try:
+            tr_trans = GoogleTranslator(source="en", target="tr").translate(lemma) or ""
+        except Exception:
+            tr_trans = ""
 
     return tr_trans, en_def, example
 
 
 def analyze_text_hybrid(text: str, user_level: str = "B1", ai_fallback_fn=None) -> list[dict]:
     user_rank = LEVEL_ORDER.get(user_level.upper(), 3)
-
     sentences = re.split(r"(?<=[.!?])\s+", text.strip())
 
-    # 1) Metindeki tüm aday kökleri tek seferde topla
     all_candidates = set()
     for sentence in sentences:
         for token in re.findall(r"[A-Za-z]+", sentence):
             if len(token) >= 3:
                 all_candidates.update(get_lemma_candidates(token))
 
-    # 2) 172 bin kelimenin tamamını değil, sadece metinde geçenleri veritabanından çek
     cefr_map = {
         item.word.lower(): item
         for item in CEFRWord.objects.filter(word__in=all_candidates)
     }
 
-    found_words = []
+    matched_items = []
     seen_lemmas = set()
+    missing_tr_entries = []
 
     for sentence in sentences:
-        raw_tokens = re.findall(r"[A-Za-z]+", sentence)
-        for token in raw_tokens:
+        for token in re.findall(r"[A-Za-z]+", sentence):
             if len(token) < 3:
                 continue
 
@@ -123,33 +129,44 @@ def analyze_text_hybrid(text: str, user_level: str = "B1", ai_fallback_fn=None) 
             word_rank = LEVEL_ORDER.get(matched_entry.cefr_level.upper(), 4)
             if word_rank > user_rank:
                 seen_lemmas.add(lemma)
+                matched_items.append((token.lower(), matched_entry, sentence.strip()))
+                if not matched_entry.turkish_translation:
+                    missing_tr_entries.append(matched_entry)
 
-                # Eksik anlam/örnek varsa anında çek ve veritabanına önbellekle
-                if not matched_entry.turkish_translation or not matched_entry.english_definition or not matched_entry.example_sentence:
-                    tr, en_def, ex = fetch_contextual_details(lemma, sentence)
-                    updated = False
-                    if not matched_entry.turkish_translation and tr:
-                        matched_entry.turkish_translation = tr
-                        updated = True
-                    if not matched_entry.english_definition and en_def:
-                        matched_entry.english_definition = en_def
-                        updated = True
-                    if not matched_entry.example_sentence and ex:
-                        matched_entry.example_sentence = ex
-                        updated = True
-                    if updated:
-                        matched_entry.save()
+    # Tüm eksik kelimeleri 15'erli gruplar halinde yerel Ollama'ya çevirt
+    if missing_tr_entries:
+        for i in range(0, len(missing_tr_entries), 15):
+            batch = missing_tr_entries[i:i + 15]
+            words_list = [entry.word for entry in batch]
+            prompt = (
+                "Translate these English words into short, natural Turkish meanings (1-3 words each). "
+                "Return ONLY a JSON object where each key is the exact English word and the value is its Turkish translation.\n"
+                f"Words: {words_list}"
+            )
+            try:
+                tr_map = _ollama_json_cagir(prompt, timeout=30)
+                if isinstance(tr_map, dict):
+                    lower_map = {str(k).lower(): str(v).strip() for k, v in tr_map.items()}
+                    for entry in batch:
+                        tr = lower_map.get(entry.word.lower(), "")
+                        if tr:
+                            entry.turkish_translation = tr
+                            entry.save(update_fields=["turkish_translation"])
+            except Exception as e:
+                print(f"⚠️ Ollama toplu çeviri hatası: {e}")
 
-                found_words.append(
-                    {
-                        "kelime": token.lower(),
-                        "kok": lemma,
-                        "seviye": matched_entry.cefr_level,
-                        "turkce_ceviri": matched_entry.turkish_translation,
-                        "ingilizce_tanim": matched_entry.english_definition,
-                        "ornek_cumle": matched_entry.example_sentence,
-                        "baglam": sentence.strip(),
-                    }
-                )
+    found_words = []
+    for token_lower, entry, ctx in matched_items:
+        found_words.append(
+            {
+                "kelime": token_lower,
+                "kok": entry.word.lower(),
+                "seviye": entry.cefr_level,
+                "turkce_ceviri": entry.turkish_translation or "",
+                "ingilizce_tanim": entry.english_definition or "",
+                "ornek_cumle": entry.example_sentence or "",
+                "baglam": ctx,
+            }
+        )
 
     return found_words

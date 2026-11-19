@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://192.168.1.107:8000';
+const API_URL = 'http://10.242.73.1:8000';
 const bgSource = require('../../assets/login-bg.jpeg');
 
 interface WordItem {

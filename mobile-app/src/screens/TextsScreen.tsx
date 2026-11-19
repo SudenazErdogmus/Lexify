@@ -19,7 +19,7 @@ import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 
-const API_URL = 'http://192.168.1.107:8000';
+const API_URL = 'http://10.242.73.1:8000';
 const bgSource = require('../../assets/login-bg.jpeg');
 
 interface SavedText {
@@ -157,7 +157,7 @@ export default function TextsScreen() {
       return;
     }
 
-    // 2. Sözlükte yoksa AI / Backend üzerinden anlamını çek
+    // 2. Sözlükte yoksa sadece bu tek kelimeyi /api/word-lookup/ ile çek
     setIsLookingUp(true);
     setLookupWord({
       word: cleaned,
@@ -170,37 +170,29 @@ export default function TextsScreen() {
 
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const response = await fetch(`${API_URL}/api/media-sources/process_url/`, {
+      const response = await fetch(`${API_URL}/api/word-lookup/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ text: context, level: 'A1' }),
+        body: JSON.stringify({ word: cleaned, context }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        const list = data.bulunan_kelimeler || [];
-        const match = list.find(
-          (item: any) => item.kelime?.toLowerCase() === lower
-        );
-
-        if (match) {
-          setLookupWord({
-            word: match.kelime,
-            cefr_level: match.seviye || 'B2',
-            translation: match.turkce_ceviri,
-            definition: match.ingilizce_tanim,
-            context_sentence: match.baglam || context,
-            alreadySaved: false,
-          });
-          setIsLookingUp(false);
-          return;
-        }
+        setLookupWord({
+          word: data.kelime || cleaned,
+          cefr_level: 'B2',
+          translation: data.turkce_ceviri || 'Çeviri bulunamadı',
+          definition: data.ingilizce_tanim || '',
+          context_sentence: context,
+          alreadySaved: false,
+        });
+        setIsLookingUp(false);
+        return;
       }
 
-      // Eşleşme bulunamazsa temiz yedek görünüm
       setLookupWord({
         word: cleaned,
         cefr_level: 'B2',
